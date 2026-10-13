@@ -1,0 +1,565 @@
+<title>voidx Strategy Bench</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500&display=swap">
+<style>
+/* Layout: an instrument panel. Engines and dumps first (the whole run), then filters and verdicts, the two charts
+   side by side, runs and drill-down below; then the views across the whole run: cost against accuracy per mode and
+   tier, and the live endpoints. Baselines (void-generator, rdfsolve) are modes with their own colour and a diamond
+   marker; tiers have their own two colours, used only in the cross-tier view, for voidx's points and as a baseline
+   point's outline. Cost is HTTP requests on every chart. */
+:root {
+  --bg: #f4f6f9; --panel: #ffffff; --ink: #18202c; --muted: #5d6878; --rule: #dde2ea; --accent: #3350b8;
+  --good: #1f7a4d; --warn: #a86a00; --bad: #b3261e; --good-bg: #e3f3ea; --warn-bg: #fbf0dc; --bad-bg: #fbe5e3;
+  --m-naive: #8a8f98; --m-exact: #3350b8; --m-sample: #c2410c; --m-presence: #7c3aed; --m-adaptive: #0f766e; --m-adaptive-rerun: #0e9f95;
+  --m-void-generator: #0284c7; --m-rdfsolve: #65a30d; --t-synthetic: #3350b8; --t-real: #c2410c;
+  --display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #11151c; --panel: #181e27; --ink: #e4e9f1; --muted: #98a2b3; --rule: #2a3340; --accent: #8ea4ff;
+  --good: #5fd39a; --warn: #f0b64a; --bad: #ff8a80; --good-bg: #173326; --warn-bg: #3a2c12; --bad-bg: #3d1c1a;
+  --m-naive: #a3a9b3; --m-exact: #8ea4ff; --m-sample: #fb8a4c; --m-presence: #b794ff; --m-adaptive: #4fd1c5; --m-adaptive-rerun: #9be7df;
+  --m-void-generator: #2b9fd9; --m-rdfsolve: #71a02c; --t-synthetic: #6f8cf5; --t-real: #d9692f;
+  color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #11151c; --panel: #181e27; --ink: #e4e9f1; --muted: #98a2b3; --rule: #2a3340; --accent: #8ea4ff;
+  --good: #5fd39a; --warn: #f0b64a; --bad: #ff8a80; --good-bg: #173326; --warn-bg: #3a2c12; --bad-bg: #3d1c1a;
+  --m-naive: #a3a9b3; --m-exact: #8ea4ff; --m-sample: #fb8a4c; --m-presence: #b794ff; --m-adaptive: #4fd1c5; --m-adaptive-rerun: #9be7df;
+  --m-void-generator: #2b9fd9; --m-rdfsolve: #71a02c; --t-synthetic: #6f8cf5; --t-real: #d9692f;
+  color-scheme: dark }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 var(--body); }
+.wrap { max-width: 1180px; margin: 0 auto; padding-inline: 16px; padding-block: 24px 48px; display: grid; gap: 20px; }
+header { display: grid; gap: 6px; }
+h1 { font: 600 1.9rem/1.1 var(--display); letter-spacing: .01em; margin: 0; text-wrap: balance; }
+h2 { font: 600 1.05rem/1.2 var(--display); letter-spacing: .02em; margin: 0; }
+.meta { color: var(--muted); font-family: var(--mono); font-size: .8rem; }
+.lede { color: var(--muted); max-width: 70ch; margin: 0; }
+.filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+.filters label { display: grid; gap: 4px; font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+select { font: 14px var(--body); color: var(--ink); background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 6px 10px; min-width: 11rem; }
+select:focus-visible, tr[tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.panel { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 16px; display: grid; gap: 12px; min-width: 0; }
+.charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 20px; }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+th { font: 500 .72rem var(--body); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+td.num, th.num { text-align: right; font-family: var(--mono); font-size: .85rem; }
+tr.pick { cursor: pointer; }
+tr.pick:hover td, tr.selected td { background: color-mix(in srgb, var(--accent) 9%, transparent); }
+.mode { display: inline-flex; align-items: center; gap: 7px; font-family: var(--mono); font-size: .85rem; }
+.swatch { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+.pill { font: 500 .75rem var(--mono); padding: 2px 8px; border-radius: 999px; display: inline-block; }
+.pill.good { color: var(--good); background: var(--good-bg); } .pill.warn { color: var(--warn); background: var(--warn-bg); }
+.pill.bad { color: var(--bad); background: var(--bad-bg); } .pill.none { color: var(--muted); }
+svg text { fill: var(--muted); font: 11px var(--mono); }
+svg .grid { stroke: var(--rule); stroke-width: 1; }
+svg .target { stroke: var(--good); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.banner { margin: 0; padding: 10px 14px; border-radius: 8px; font-weight: 500; max-width: 75ch; }
+.banner.warn { color: var(--warn); background: var(--warn-bg); } .banner.bad { color: var(--bad); background: var(--bad-bg); }
+.note { color: var(--muted); font-size: .85rem; margin: 0; max-width: 75ch; }
+.empty { color: var(--muted); padding: 24px 0; }
+.multiples { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: 16px; }
+#cross-tier { min-width: 0; }
+#cross-tier figure { margin: 0; display: grid; gap: 4px; min-width: 0; }
+.multiples figcaption, .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; font-size: .85rem; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+code { font-family: var(--mono); font-size: .85em; }
+code.failure { display: inline-block; min-width: 24ch; max-width: 48ch; white-space: normal; overflow-wrap: anywhere; }
+[hidden] { display: none !important; }
+@media (prefers-reduced-motion: no-preference) { tr.pick td { transition: background .15s; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>voidx Strategy Bench</h1>
+    <p class="meta" id="meta">Loading results…</p>
+    <p class="banner bad" id="publishable" role="alert" hidden></p>
+    <p class="banner warn" id="partial" role="status" hidden>Partial run: the run stopped early; these results cover only the cells that finished before it stopped.</p>
+    <p class="lede">How accurate and how costly each extraction strategy is, measured against exact ground truth on seeded
+      synthetic corpora and on real dumps. Recall and precision are over (subject class, property, object class or datatype) patterns. Estimates
+      should have their 95 % bounds (±2·RSE before voidx 4b) hold the truth about 95 % of the time. An exact count that
+      differs from truth at all is a defect.</p>
+  </header>
+
+  <section class="panel" id="findings-panel" aria-labelledby="h-findings" hidden>
+    <h2 id="h-findings">Engines and dumps</h2>
+    <p class="note">How each engine took each source in this run. A diverged engine stored the source differently from its
+      canonical form (expected → stored counts); a failed one did not load it. Either way its cells were skipped.
+      "Detected as" is what voidx took the engine for. "Union view" is the truth an engine is scored against: bag (a
+      triple in two graphs counts twice) or set (the RDF merge), as the engine declares it merges graphs, by its union default graph or FROM.
+      "Stores differently" is the datatype rewrites an engine was measured to make on what it stores: its datatype patterns cannot match
+      truth, so its exact-count defects there are the engine's storage, not voidx's. They still count: exact means exact.</p>
+    <div class="scroll"><table id="findings"></table></div>
+  </section>
+
+  <div class="filters">
+    <label for="f-corpus">Corpus<select id="f-corpus"></select></label>
+    <label for="f-engine">Engine<select id="f-engine"></select></label>
+    <label for="f-faults">Faults<select id="f-faults"></select></label>
+  </div>
+  <p class="meta" id="source-meta"></p>
+
+  <section class="panel" aria-labelledby="h-verdicts">
+    <h2 id="h-verdicts">Strategies at a glance</h2>
+    <div class="scroll"><table id="verdicts"></table></div>
+    <p class="note" id="proxy-note" hidden></p>
+  </section>
+
+  <div class="charts">
+    <section class="panel" aria-labelledby="h-cost">
+      <h2 id="h-cost">Cost against recall</h2>
+      <p class="note">HTTP requests sent (log scale), retries included, against the share of true patterns found. Up and to the left is better.</p>
+      <div id="scatter"></div>
+    </section>
+    <section class="panel" aria-labelledby="h-cov">
+      <h2 id="h-cov">Estimate intervals holding the truth</h2>
+      <p class="note">Per strategy that produced estimates. The dashed line is the 95 % target.</p>
+      <div id="coverage"></div>
+    </section>
+  </div>
+
+  <section class="panel" aria-labelledby="h-err">
+    <h2 id="h-err">Estimate error by quantity</h2>
+    <p class="note">Relative error of estimates against the non-blank truth: median and 95th percentile over each run's estimates, then the median over repetitions. Exact counts have no error: any difference is a defect.</p>
+    <div class="scroll"><table id="errors"></table></div>
+  </section>
+
+  <section class="panel" id="estimators-panel" aria-labelledby="h-estimators" hidden>
+    <h2 id="h-estimators">Estimators over every sample slice</h2>
+    <p class="note">Each corpus harvested 16 times at 1/16 and 16 times at 1/256, pinned to sampling, every estimate
+      scored against its non-blank truth. 4b is what voidx reports (the conditional MLE for a pattern, exact 95 %
+      bounds, clamped by the counts the run knows); 4b-uncapped is the same point and bounds before the caps, so the
+      estimator's own bias shows apart from the caps' (where a cap equals the truth, capping biases the point low);
+      pre-4b is h / π with ±2·RSE from the same hits. Bias and RMSE are
+      of the relative error; coverage is the share of intervals holding the truth, with its range over slices;
+      detection is the share of (true target, slice) pairs with an estimate. The size groups leave out literal
+      objects.</p>
+    <div class="scroll"><table id="estimators"></table></div>
+  </section>
+
+  <section class="panel" aria-labelledby="h-runs">
+    <h2 id="h-runs">Runs</h2>
+    <p class="note">Every repetition, with robustness counts from the outcomes voidx recorded. Select a run to see its patterns.</p>
+    <div class="scroll"><table id="runs"></table></div>
+  </section>
+
+  <section class="panel" aria-labelledby="h-drill">
+    <h2 id="h-drill">Patterns the run got wrong, missed, invented, estimated or only saw</h2>
+    <p class="note" id="drill-note" aria-live="polite">Select a run above.</p>
+    <div class="scroll"><table id="drill"></table></div>
+  </section>
+
+  <section class="panel" aria-labelledby="h-queries">
+    <h2 id="h-queries">Queries the run sent</h2>
+    <p class="note" id="queries-note" aria-live="polite">Select a run above.</p>
+    <div class="scroll"><table id="queries"></table></div>
+  </section>
+
+  <section class="panel" aria-labelledby="h-tiers">
+    <h2 id="h-tiers">Cost against accuracy, across tiers</h2>
+    <p class="note">One chart per mode, the baselines beside voidx's: each point is a (source, engine, faults) group's
+      median HTTP requests (log scale) against its recall. voidx's points are coloured by tier; a baseline's take its
+      mode's colour, with the tier as its outline. Every chart shares the same axes. Live endpoints have no truth, so
+      they sit on a cost-only strip below, coloured by mode.</p>
+    <div class="legend" id="tier-legend"></div>
+    <div id="cross-tier"></div>
+  </section>
+
+  <section class="panel" id="live-panel" aria-labelledby="h-live" hidden>
+    <h2 id="h-live">Live endpoints</h2>
+    <p class="note" id="live-note"></p>
+    <div class="scroll"><table id="live"></table></div>
+  </section>
+</div>
+
+<script>
+const MODES = ["naive", "exact", "sample", "presence", "adaptive", "adaptive-rerun", "void-generator", "rdfsolve"];
+const BASELINES = new Set(["void-generator", "rdfsolve"]);
+const TIER_COLORS = {synthetic: "var(--t-synthetic)", real: "var(--t-real)"};
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const local = (iri) => { const s = String(iri ?? ""); if (s.startsWith("urn:sparqlwatch:")) return s.slice(16); const m = s.match(/[#/]([^#/]+)$/); return m ? m[1] : s; };
+const pct = (v) => v == null ? "–" : `${Math.round(100 * v)} %`;
+const num = (v, d = 0) => v == null ? "–" : Number(v).toFixed(d);
+const color = (mode) => MODES.includes(mode) ? `var(--m-${mode})` : "var(--muted)";
+const count = (v) => v == null ? "–" : Number(v).toLocaleString("en");
+const family = (engine) => { const f = String(engine).split("-")[0]; return f === "pyoxigraph" ? "oxigraph" : f; };
+const shortImage = (v) => { const s = String(v), at = s.indexOf("@"); return at >= 0 ? s.slice(0, at + 20) : s.slice(0, 19); };  // name@sha256:<12 hex>
+const TIERS = [["synthetic", "Synthetic corpora"], ["real", "Real dumps"]];
+const modeCell = (mode) => `<span class="mode"><span class="swatch" style="background:${color(mode)}"></span>${esc(mode)}</span>`;
+let data = null, selected = null;
+
+function filtered(rows) {
+  const c = $("f-corpus").value, e = $("f-engine").value, f = $("f-faults").value;
+  return rows.filter((r) => r.corpus === c && r.engine === e && r.faults === f);
+}
+
+function options(select, values) {
+  select.innerHTML = values.map((v) => `<option value="${esc(v)}">${esc(v)}</option>`).join("");
+}
+
+function sourceLabel(s) {
+  return [s.id, s.quads != null ? `${count(s.quads)} quads` : null, s.tier === "real" ? s.version : null].filter(Boolean).join(" · ");
+}
+
+function corpusOptions(sources) {
+  $("f-corpus").innerHTML = TIERS.map(([tier, label]) => {
+    const items = sources.filter((s) => s.tier === tier);
+    return items.length ? `<optgroup label="${esc(label)}">${items.map((s) => `<option value="${esc(s.id)}">${esc(sourceLabel(s))}</option>`).join("")}</optgroup>` : "";
+  }).join("");
+}
+
+function narrow() {
+  // the engines and fault profiles this corpus ran (a real dump has no faults), keeping the current pick if it ran
+  const runs = data.runs.filter((r) => r.corpus === $("f-corpus").value);
+  for (const [id, key] of [["f-engine", "engine"], ["f-faults", "faults"]]) {
+    const keep = $(id).value, values = [...new Set(runs.map((r) => r[key]))].sort();
+    options($(id), values);
+    if (values.includes(keep)) $(id).value = keep;
+  }
+}
+
+function renderSourceMeta() {
+  const s = (data.sources || []).find((x) => x.id === $("f-corpus").value);
+  $("source-meta").textContent = !s ? "" : s.tier === "real"
+    ? `Real dump · ${count(s.quads)} quads · version ${s.version ?? "–"} · licence ${s.licence ?? "–"}`
+    : `Synthetic corpus${s.quads != null ? ` · ${count(s.quads)} triples (target)` : ""}`;
+}
+
+function renderFindings() {
+  const rows = data.findings || [];
+  $("findings-panel").hidden = !rows.length;
+  if (!rows.length) return;
+  const order = new Map((data.sources || []).map((s, i) => [s.id, i]));
+  const sorted = [...rows].sort((a, b) => (order.get(a.source) ?? 99) - (order.get(b.source) ?? 99) || String(a.engine).localeCompare(String(b.engine)));
+  const cls = {loaded: "good", diverged: "warn", failed: "bad"};
+  const changes = (f) => (f.differences || []).map(([, p, e, s]) => `${local(p)} ${count(e)} → ${count(s)}`);
+  const detail = (f) => {
+    if (f.state === "failed") { const r = String(f.reason || "?").replace(/\s+/g, " "); return {short: r.length > 160 ? r.slice(0, 159) + "…" : r, full: f.reason || ""}; }
+    if (f.state !== "diverged") return {short: "–", full: ""};
+    const all = changes(f);
+    return {short: all.slice(0, 3).join(", ") + (all.length > 3 ? ` (+${all.length - 3} more)` : ""), full: all.join("\n")};
+  };
+  const detected = (f) => {
+    if (!f.detected || !f.detected.length) return "–";
+    const odd = f.detected.some((d) => d.split(" \u00b7 ")[0] !== family(f.engine));  // "name · default graph"
+    return odd ? `<span class="pill warn">${esc(f.detected.join(", "))}</span>` : esc(f.detected.join(", "));
+  };
+  $("findings").innerHTML = `<thead><tr><th>engine</th><th>source</th><th>load</th><th class="num">load s</th><th>expected → stored, or reason</th>
+    <th>detected as</th><th title="the truth view the engine is scored against">union view</th><th title="datatype rewrites the engine was measured to make">stores differently</th><th>image</th><th class="num" title="cells not run because of this finding">skipped</th></tr></thead>
+    <tbody>${sorted.map((f) => { const d = detail(f); return `<tr><td><code>${esc(f.engine)}</code></td><td>${esc(f.source)}</td>
+    <td><span class="pill ${cls[f.state] || "bad"}">${esc(f.state)}</span></td><td class="num">${num(f.load_s, 2)}</td>
+    <td title="${esc(d.full)}">${esc(d.short)}</td><td>${detected(f)}</td><td>${esc(f.union_view || "–")}</td>
+    <td>${f.stores_differently ? `<span class="pill warn" title="${esc(storageNote(f.engine, f.stores_differently))}">${esc(f.stores_differently)}</span>` : "–"}</td>
+    <td>${f.engine_image ? `<code title="${esc(f.engine_image)}">${esc(shortImage(f.engine_image))}</code>` : "–"}</td>
+    <td class="num">${num(f.skipped)}</td></tr>`; }).join("")}</tbody>`;
+}
+
+const storageNote = (engine, stores) => `${engine} stores ${stores}; its datatype patterns cannot match truth (see Engines and dumps).`;
+
+function storedDifferently() {
+  // the selected engine's declared datatype rewrites on the selected source, if any
+  const f = (data.findings || []).find((x) => x.engine === $("f-engine").value && x.source === $("f-corpus").value);
+  return f && f.stores_differently ? storageNote(f.engine, f.stores_differently) : null;
+}
+
+function defectPill(n) {
+  if (!n) return `<span class="pill good">match truth</span>`;
+  const label = `${n} defect${n > 1 ? "s" : ""}`, storage = storedDifferently();
+  return storage ? `<span class="pill warn" title="${esc(storage)}">${label} (engine storage)</span>` : `<span class="pill bad">${label}</span>`;
+}
+
+function coveragePill(v) {
+  if (v == null) return `<span class="pill none">no estimates</span>`;
+  const cls = v >= 0.9 && v <= 0.99 ? "good" : v >= 0.8 ? "warn" : "bad";
+  return `<span class="pill ${cls}">${pct(v)}</span>`;
+}
+
+function renderVerdicts(summary) {
+  const rows = MODES.map((m) => summary.find((s) => s.mode === m)).filter(Boolean);
+  const proxied = rows.some((s) => s.cost_basis === "proxy-measured");
+  $("proxy-note").hidden = !proxied;
+  $("proxy-note").textContent = proxied ? (data.proxy_note || "") : "";
+  const proxyMark = (s) => s.cost_basis === "proxy-measured" ? ` <span class="pill none" title="counted by the bench proxy">proxy-measured</span>` : "";
+  $("verdicts").innerHTML = `<thead><tr><th>strategy</th><th class="num">recall</th><th class="num">precision</th>
+    <th class="num">predicates</th><th class="num" title="voidx: its query attempts, retries folded in; a baseline: the HTTP requests the bench proxy counted">queries</th><th class="num">server s</th><th class="num">rel. error <small>median / p95</small></th>
+    <th>intervals</th><th>exact counts</th><th>harvest</th></tr></thead><tbody>${rows.map((s) => `<tr>
+    <td>${modeCell(s.mode)}</td><td class="num">${pct(s.pattern_recall)}</td><td class="num">${pct(s.pattern_precision)}</td>
+    <td class="num">${pct(s.predicate_coverage)}</td><td class="num">${num(s.queries)}${s.mode === "adaptive-rerun" && s.queries_saved != null ? ` (${Number(s.queries_saved) >= 0 ? "−" : "+"}${num(Math.abs(s.queries_saved))})` : ""}${proxyMark(s)}</td><td class="num">${num(s.server_s, 2)}</td>
+    <td class="num">${pct(s.rel_error_median)} / ${pct(s.rel_error_p95)}</td><td>${coveragePill(s.interval_coverage)}</td>
+    <td>${defectPill(Number(s.exact_defects))}</td>
+    <td>${Number(s.failed) ? `<span class="pill warn">${Number(s.failed)}/${Number(s.reps)} measured nothing</span>` : `<span class="pill good">${Number(s.reps)}/${Number(s.reps)} ok</span>`}</td>
+    </tr>`).join("")}</tbody>`;
+}
+
+function renderScatter(summary) {
+  const pts = summary.filter((s) => s.requests != null && s.pattern_recall != null);
+  const W = 520, H = 300, L = 48, R = 16, T = 14, B = 36;
+  if (!pts.length) { $("scatter").innerHTML = `<p class="empty">No measured runs for this selection.</p>`; return; }
+  const maxQ = Math.max(10, ...pts.map((p) => p.requests));
+  const decades = []; for (let d = 1; d <= maxQ * 10; d *= 10) decades.push(d);
+  const lo = Math.log10(1), hi = Math.log10(decades[decades.length - 1]);
+  const x = (q) => L + (Math.log10(Math.max(1, q)) - lo) / (hi - lo) * (W - L - R);
+  const y = (r) => T + (1 - r) * (H - T - B);
+  let svg = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="HTTP requests against recall per strategy">`;
+  for (const r of [0, .25, .5, .75, 1]) svg += `<line class="grid" x1="${L}" x2="${W - R}" y1="${y(r)}" y2="${y(r)}"/><text x="${L - 8}" y="${y(r) + 4}" text-anchor="end">${r * 100}%</text>`;
+  for (const d of decades) svg += `<line class="grid" x1="${x(d)}" x2="${x(d)}" y1="${T}" y2="${H - B}"/><text x="${x(d)}" y="${H - B + 16}" text-anchor="middle">${d}</text>`;
+  svg += `<text x="${(L + W - R) / 2}" y="${H - 4}" text-anchor="middle">HTTP requests</text>`;
+  for (const p of pts) {
+    const cx = x(p.requests), cy = y(p.pattern_recall);
+    svg += marker(cx, cy, 6, p.mode, color(p.mode), `${esc(p.mode)}: ${num(p.requests)} HTTP requests${p.cost_basis === "proxy-measured" ? " (proxy-measured)" : ""}, recall ${pct(p.pattern_recall)}`);
+    svg += `<text x="${Math.min(cx + 9, W - R - 60)}" y="${cy - 8}" style="fill:${color(p.mode)}">${esc(p.mode)}</text>`;
+  }
+  $("scatter").innerHTML = svg + `</svg>`;
+}
+
+function marker(cx, cy, r, mode, fill, title, outline = "var(--panel)") {
+  // a baseline is a diamond, a voidx mode a circle: identity is never colour alone
+  const shape = BASELINES.has(mode)
+    ? `<rect x="${cx - r * 0.85}" y="${cy - r * 0.85}" width="${r * 1.7}" height="${r * 1.7}" transform="rotate(45 ${cx} ${cy})"`
+    : `<circle cx="${cx}" cy="${cy}" r="${r}"`;
+  return `${shape} fill="${fill}" stroke="${outline}" stroke-width="2"><title>${title}</title>${BASELINES.has(mode) ? "</rect>" : "</circle>"}`;
+}
+
+function logAxis(maxQ, L, R, W) {
+  const decades = []; for (let d = 1; d <= maxQ * 10; d *= 10) decades.push(d);
+  const hi = Math.log10(decades[decades.length - 1]);
+  return {decades, x: (q) => L + Math.log10(Math.max(1, q)) / hi * (W - L - R)};
+}
+
+function renderCrossTier() {
+  const pts = (data.cross_tier || []).filter((p) => p.requests != null && p.pattern_recall != null);
+  const live = (data.live || []).filter((r) => r.requests != null);
+  const tiers = Object.keys(TIER_COLORS).filter((t) => pts.some((p) => p.tier === t));
+  // the live strip's markers take their mode's colour, so its legend entry shows those colours, not a grey of its own
+  const liveSwatches = MODES.filter((m) => live.some((r) => r.mode === m)).map((m) => `<span class="swatch" style="background:${color(m)}"></span>`).join("");
+  $("tier-legend").innerHTML = tiers.map((t) => `<span><span class="swatch" style="background:${TIER_COLORS[t]}"></span>${esc(t)}</span>`).join("")
+    + (live.length ? `<span>${liveSwatches}live (cost only, by mode)</span>` : "");
+  if (!pts.length && !live.length) { $("cross-tier").innerHTML = `<p class="empty">No measured runs.</p>`; return; }
+  const W = 300, H = 200, L = 40, R = 18, T = 10, B = 30;
+  const {decades, x} = logAxis(Math.max(10, ...pts.map((p) => p.requests), ...live.map((r) => r.requests)), L, R, W);
+  const y = (r) => T + (1 - r) * (H - T - B);
+  const axes = () => {
+    let g = "";
+    for (const r of [0, .5, 1]) g += `<line class="grid" x1="${L}" x2="${W - R}" y1="${y(r)}" y2="${y(r)}"/><text x="${L - 6}" y="${y(r) + 4}" text-anchor="end">${r * 100}%</text>`;
+    for (const d of decades) g += `<line class="grid" x1="${x(d)}" x2="${x(d)}" y1="${T}" y2="${H - B}"/><text x="${x(d)}" y="${H - B + 14}" text-anchor="middle">${d}</text>`;
+    return g;
+  };
+  let html = `<div class="multiples">`;
+  for (const mode of MODES.filter((m) => pts.some((p) => p.mode === m))) {
+    let svg = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${esc(mode)}: HTTP requests against recall per tier">${axes()}`;
+    for (const p of pts.filter((q) => q.mode === mode)) {
+      const tier = TIER_COLORS[p.tier] || "var(--muted)";
+      // a baseline's points take its mode's colour, with its tier as the outline; voidx's are coloured by tier
+      svg += marker(x(p.requests), y(p.pattern_recall), 4.5, mode, BASELINES.has(mode) ? color(mode) : tier,
+        `${esc(p.tier)} · ${esc(p.corpus)} · ${esc(p.engine)} · ${esc(p.faults)}: ${num(p.requests)} HTTP requests, recall ${pct(p.pattern_recall)}, precision ${pct(p.pattern_precision)}`,
+        BASELINES.has(mode) ? tier : undefined);
+    }
+    html += `<figure><figcaption>${modeCell(mode)}${BASELINES.has(mode) ? ` <span class="pill none">proxy-measured</span>` : ""}</figcaption>${svg}</svg></figure>`;
+  }
+  html += `</div>`;
+  if (live.length) {
+    // one lane per endpoint, the mode by its marker colour: names sit at the lane's start, never on top of each other
+    const lanes = [...new Set(live.map((r) => r.corpus))], modes = MODES.filter((m) => live.some((r) => r.mode === m));
+    const LW = 1000, lane = 30, LH = lanes.length * lane + 34;
+    const lx = logAxis(Math.max(10, ...pts.map((p) => p.requests), ...live.map((r) => r.requests)), 150, 24, LW).x;
+    let strip = `<svg viewBox="0 0 ${LW} ${LH}" width="100%" style="min-width:640px" role="img" aria-label="Live endpoints: HTTP requests sent, cost only">`;
+    for (const d of decades) strip += `<line class="grid" x1="${lx(d)}" x2="${lx(d)}" y1="4" y2="${LH - 26}"/><text x="${lx(d)}" y="${LH - 10}" text-anchor="middle">${d}</text>`;
+    lanes.forEach((endpoint, i) => {
+      const cy = 4 + lane * i + lane / 2;
+      const label = String(endpoint).length > 20 ? String(endpoint).slice(0, 19) + "…" : String(endpoint);
+      strip += `<text x="142" y="${cy + 4}" text-anchor="end">${esc(label)}<title>${esc(endpoint)}</title></text>`;
+      for (const r of live.filter((q) => q.corpus === endpoint)) {
+        strip += marker(lx(r.requests), cy, 6, r.mode, color(r.mode), `${esc(endpoint)} · ${esc(r.mode)}: ${num(r.requests)} HTTP requests sent, ${num(r.wall_s, 0)} s wall${r.stopped ? ", stopped as down" : ""}`);
+      }
+    });
+    html += `<figure><figcaption>Live endpoints, cost only: HTTP requests sent ${modes.map((m) => modeCell(m)).join(" ")}</figcaption><div class="scroll">${strip}</svg></div></figure>`;
+  }
+  $("cross-tier").innerHTML = html;
+}
+
+// rows from before 4a have no harvest columns, and rows from before 4a.1 no failure_body: each reads as "–"
+// rows from before 4d have no carried_unverified or previous_measured: the cell leaves them out, the column reads "–"
+const carryCell = (r) => r.carry ? esc(r.carry + (r.carry_reason ? ` (${r.carry_reason})` : "")
+  + (Number(r.carried_unverified) ? `, ${num(r.carried_unverified)} unverified` : "")) : "–";
+// the listings a run skipped (4e) beside its inventory method; rows from before 4e have no count: the method alone
+const inventoryCell = (r) => {
+  if (!r.inventory_method) return "–";
+  const text = r.inventory_method + (Number(r.listings_skipped) ? ` \u00b7 ${num(r.listings_skipped)} skipped` : "");
+  const plain = r.inventory_method === "counted" && !Number(r.listings_skipped);
+  return plain ? esc(text) : `<span class="pill warn">${esc(text)}</span>`;
+};
+
+function renderLive() {
+  const rows = data.live || [];
+  $("live-panel").hidden = !rows.length;
+  if (!rows.length) return;
+  $("live-note").textContent = data.live_note || "";
+  const outcomes = (r) => [["ok", r.n_ok, "good"], ["timeouts", r.n_timeout, "bad"], ["row caps", r.n_row_cap, "warn"], ["row length", r.n_row_length, "warn"], ["throttled", r.n_throttled, "warn"]]
+    .map(([label, n, cls]) => `<td class="num">${Number(n) && cls !== "good" ? `<span class="pill ${cls}">${num(n)}</span>` : num(n)}</td>`).join("");
+  // throttled is the endpoint's own 429s: the report has already taken the bench's local refusals out of r.n_throttled
+  $("live").innerHTML = `<thead><tr><th>endpoint</th><th>detected as</th><th>mode</th><th class="num" title="voidx's query attempts, those answered locally included">attempts</th><th class="num" title="HTTP requests that reached the endpoint: the cost">requests sent</th>
+    <th class="num">server s</th><th class="num">wall s</th><th class="num" title="rate-limit waiting, real time">waited s</th><th class="num">ok</th><th class="num">timeouts</th>
+    <th class="num">row caps</th><th class="num" title="refused for the server's row length (Virtuoso SR319): answered further down the ladder">row length</th><th class="num" title="the endpoint's own 429s; the bench's local refusals are not counted">throttled</th><th class="num">not measured</th><th class="num" title="requests sent: the adaptive run's less its rerun's">rerun saved</th><th>budget</th><th>stopped</th>
+    <th class="num" title="predicates the inventory listed">predicates</th><th class="num" title="their counts known at the end of the run">counted</th><th class="num" title="with a measured summary">measured</th><th class="num" title="counted or named">classes</th><th title="how the predicates were found: counted, uncounted, uncounted-partial or per-graph">inventory</th><th title="what the run carried from the last one, and why a full refresh">carry</th>
+    <th class="num" title="predicates measured by the endpoint's latest run before this invocation">measured before</th>
+    <th title="the start of the answer that ended the run or its inventory">failure</th></tr></thead>
+    <tbody>${rows.map((r) => `<tr><td><span title="${esc(r.endpoint)}">${esc(r.corpus)}</span></td>
+    <td>${r.voidx_engine ? esc(r.voidx_engine + (r.voidx_default_graph ? " \u00b7 " + r.voidx_default_graph : "")) : "–"}</td><td>${modeCell(r.mode)}</td>
+    <td class="num">${num(r.queries)}</td><td class="num">${num(r.requests)}</td><td class="num">${num(r.server_s, 2)}</td><td class="num">${num(r.wall_s, 2)}</td>
+    <td class="num">${num(r.waited_s, 2)}</td>${outcomes(r)}<td class="num">${num(r.not_measured)}</td><td class="num">${num(r.requests_saved)}</td>
+    <td>${Number(r.budget_refused) ? `<span class="pill warn">spent: ${num(r.budget_refused)} refused</span>` : `<span class="pill good">${num(r.requests)} of ${num(r.budget)} requests</span>`}</td>
+    <td>${r.stopped ? `<span class="pill bad" title="the endpoint answered 502/503 or could not be reached 3 times in a row; the bench sent it nothing more">down: ${num(r.stopped_refused)} refused</span>` : `<span class="pill good">no</span>`}</td>
+    <td class="num">${num(r.predicates_listed)}</td><td class="num">${num(r.predicates_counted)}</td><td class="num">${num(r.predicates_measured)}</td><td class="num">${num(r.classes_listed)}</td>
+    <td>${inventoryCell(r)}</td><td>${carryCell(r)}</td>
+    <td class="num">${num(r.previous_measured)}</td>
+    <td>${r.failure_body ? `<code class="failure">${esc(r.failure_body)}</code>` : "–"}</td></tr>`).join("")}</tbody>`;
+}
+
+// results from before 4b have no estimators rows: the panel stays hidden
+function renderEstimators() {
+  const rows = data.estimators || [];
+  $("estimators-panel").hidden = !rows.length;
+  if (!rows.length) return;
+  const signed = (v) => v == null ? "–" : `${v >= 0 ? "+" : ""}${Math.round(100 * v)} %`;
+  const spread = (r) => r.coverage_min == null ? "" : ` (${pct(r.coverage_min)}–${pct(r.coverage_max)})`;
+  const group = (r) => r.grouping === "size" ? `size ${r.group}` : r.group;
+  $("estimators").innerHTML = `<thead><tr><th>corpus</th><th>rate</th><th>group</th><th>estimator</th>
+    <th class="num">n</th><th class="num" title="mean signed relative error">bias</th>
+    <th class="num" title="root mean square of the relative error">RMSE</th>
+    <th class="num" title="share of intervals holding the truth, and its range over the 16 slices">coverage (range)</th>
+    <th class="num">detection</th></tr></thead>
+    <tbody>${rows.map((r) => `<tr><td>${esc(r.corpus)}</td><td>${esc(r.rate)}</td><td>${esc(group(r))}</td>
+    <td>${esc(r.estimator)}</td><td class="num">${count(r.n)}</td><td class="num">${signed(r.bias)}</td>
+    <td class="num">${pct(r.rmse)}</td><td class="num">${coveragePill(r.coverage)}${esc(spread(r))}</td>
+    <td class="num">${pct(r.detection)}</td></tr>`).join("")}</tbody>`;
+}
+
+function renderCoverage(summary) {
+  const bars = MODES.map((m) => summary.find((s) => s.mode === m)).filter((s) => s && s.interval_coverage != null);
+  const W = 520, H = 300, L = 48, R = 16, T = 14, B = 36;
+  if (!bars.length) { $("coverage").innerHTML = `<p class="empty">No strategy produced estimates here. Estimates come from sampling, which exact and presence runs do not do, and which the adaptive planner only falls back to when exact queries fail.</p>`; return; }
+  const y = (v) => T + (1 - v) * (H - T - B);
+  const slot = (W - L - R) / bars.length, bw = Math.min(64, slot * 0.6);
+  let svg = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Interval coverage per strategy">`;
+  for (const v of [0, .25, .5, .75, 1]) svg += `<line class="grid" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/><text x="${L - 8}" y="${y(v) + 4}" text-anchor="end">${v * 100}%</text>`;
+  bars.forEach((s, i) => {
+    const cx = L + slot * (i + .5), top = y(s.interval_coverage);
+    svg += `<rect x="${cx - bw / 2}" y="${top}" width="${bw}" height="${y(0) - top}" rx="3" fill="${color(s.mode)}"><title>${esc(s.mode)}: ${pct(s.interval_coverage)}</title></rect>`;
+    svg += `<text x="${cx}" y="${top - 6}" text-anchor="middle" style="fill:var(--ink)">${pct(s.interval_coverage)}</text>`;
+    svg += `<text x="${cx}" y="${H - B + 16}" text-anchor="middle">${esc(s.mode)}</text>`;
+  });
+  svg += `<line class="target" x1="${L}" x2="${W - R}" y1="${y(.95)}" y2="${y(.95)}"/><text x="${W - R}" y="${y(.95) - 6}" text-anchor="end" style="fill:var(--good)">95 % target</text>`;
+  $("coverage").innerHTML = svg + `</svg>`;
+}
+
+function renderErrors(summary) {
+  const rows = MODES.map((m) => summary.find((s) => s.mode === m)).filter((s) => s && s.rel_error_median != null);
+  if (!rows.length) { $("errors").innerHTML = `<caption class="empty">No strategy produced estimates here.</caption>`; return; }
+  $("errors").innerHTML = `<thead><tr><th>strategy</th><th class="num">all estimates median</th><th class="num">all estimates p95</th>
+    <th class="num">subjects median</th><th class="num">subjects p95</th><th class="num">objects median</th><th class="num">objects p95</th></tr></thead>
+    <tbody>${rows.map((s) => `<tr><td>${modeCell(s.mode)}</td><td class="num">${pct(s.rel_error_median)}</td><td class="num">${pct(s.rel_error_p95)}</td>
+    <td class="num">${pct(s.rel_error_subjects_median)}</td><td class="num">${pct(s.rel_error_subjects_p95)}</td>
+    <td class="num">${pct(s.rel_error_objects_median)}</td><td class="num">${pct(s.rel_error_objects_p95)}</td></tr>`).join("")}</tbody>`;
+}
+
+function attentionPills(r) {
+  // a baseline run that needs attention, as summary.md's "Needs attention" lists it
+  const pills = [];
+  if (Number(r.unmapped_triples) > 0) pills.push(`<span class="pill warn" title="${esc(r.unmapped_terms || "")}">unmapped ${num(r.unmapped_triples)}</span>`);
+  if (["timeout", "failed", "no-output"].includes(r.tool_outcome)) pills.push(`<span class="pill bad" title="${esc(r.tool_detail || "")}">tool ${esc(r.tool_outcome)}</span>`);
+  if (r.dropped_params) pills.push(`<span class="pill warn" title="parameters the bench proxy did not forward">dropped ${esc(r.dropped_params)}</span>`);
+  return pills.length ? " " + pills.join(" ") : "";
+}
+
+function renderRuns(runs) {
+  const ordered = [...runs].sort((a, b) => MODES.indexOf(a.mode) - MODES.indexOf(b.mode) || a.rep - b.rep);
+  const fails = (r) => ["timeout", "oom", "row_cap", "row_length", "partial", "throttled", "transient", "http_error", "rejected"]
+    .map((k) => [k.replace("_", "-"), r[`n_${k}`] || 0]).filter(([, n]) => n).map(([k, n]) => `${k} ${n}`).join(", ") || "none";
+  $("runs").innerHTML = `<thead><tr><th>strategy</th><th class="num">rep</th><th class="num" title="voidx: its query attempts, retries folded in; a baseline: the HTTP requests the bench proxy counted">queries</th><th class="num" title="HTTP requests, retries included">requests</th><th class="num">server s</th>
+    <th class="num">wall s</th><th class="num">KB</th><th class="num" title="rate-limit waiting: on a simulated clock for voidx, real time for a baseline">waited s</th><th class="num">recall</th><th class="num">precision</th><th>failed queries</th><th>not measured</th></tr></thead>
+    <tbody>${ordered.map((r) => { const key = `${r.engine}/${r.run_id}`; return `<tr class="pick${key === selected ? " selected" : ""}" tabindex="0" data-key="${esc(key)}"${key === selected ? ' aria-selected="true"' : ''}>
+    <td>${modeCell(r.mode)}${attentionPills(r)}</td><td class="num">${Number(r.rep)}</td><td class="num">${num(r.queries)}</td><td class="num">${num(r.requests)}</td><td class="num">${num(r.server_s, 2)}</td>
+    <td class="num">${num(r.wall_s, 2)}</td><td class="num">${num(r.bytes / 1024, 1)}</td><td class="num">${num(r.waited_s, 2)}</td><td class="num">${pct(r.pattern_recall)}</td><td class="num">${pct(r.pattern_precision)}</td>
+    <td>${esc(fails(r))}</td><td>${r.measured ? (r.not_measured ? `<span class="pill warn">${Number(r.not_measured)}</span>` : `<span class="pill good">0</span>`) : `<span class="pill bad">whole harvest</span>`}</td></tr>`; }).join("")}</tbody>`;
+  for (const tr of $("runs").querySelectorAll("tr.pick")) {
+    const pick = () => { selected = tr.dataset.key; render(); };
+    tr.addEventListener("click", pick);
+    tr.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(); } });
+  }
+}
+
+function notKept() {
+  // the drill-downs keep one repetition: say so for another rather than show it as clean
+  const run = data.runs.find((r) => `${r.engine}/${r.run_id}` === selected);
+  return data.drill_rep != null && run && Number(run.rep) !== Number(data.drill_rep)
+    ? `${selected}: patterns and queries are kept for repetition ${data.drill_rep} only; select that repetition.` : null;
+}
+
+function renderDrill() {
+  const limit = data.drill_limit || 400;
+  const rows = selected ? (data.drill[selected] || []) : null;
+  if (!rows) { $("drill-note").textContent = "Select a run above."; $("drill").innerHTML = ""; return; }
+  if (notKept()) { $("drill-note").textContent = notKept(); $("drill").innerHTML = ""; return; }
+  const counts = {}; for (const r of rows) counts[r.status] = (counts[r.status] || 0) + 1;
+  const run = data.runs.find((r) => `${r.engine}/${r.run_id}` === selected);
+  const outside = Number(run?.exact_defects || 0) - (counts.defect || 0);
+  const outsideNote = outside > 0 ? ` ${outside} exact-count defect(s) lie outside patterns (summaries, class or graph counts).` : "";
+  $("drill-note").textContent = (rows.length ? `${selected}: ${Object.entries(counts).map(([k, n]) => `${n} ${k}`).join(", ")}${rows.length >= limit ? ` (first ${limit})` : ""}.` : `${selected}: every pattern was found and measured exactly.`) + outsideNote;
+  const cls = {defect: "bad", missing: "bad", spurious: "bad", estimated: "warn", presence: "none"};
+  $("drill").innerHTML = rows.length ? `<thead><tr><th>status</th><th>kind</th><th>subject class</th><th>property</th><th>object class / datatype</th>
+    <th class="num">true subjects</th><th class="num">measured</th><th class="num">true objects</th><th class="num">measured</th></tr></thead>
+    <tbody>${rows.map((r) => `<tr><td><span class="pill ${cls[r.status]}">${esc(r.status)}</span></td><td>${esc(r.kind)}</td>
+    <td><code title="${esc(r.st)}">${esc(local(r.st))}</code></td><td><code title="${esc(r.p)}">${esc(local(r.p))}</code></td>
+    <td><code title="${esc(r.x)}">${esc(local(r.x))}</code></td><td class="num">${num(r.truth_subjects)}</td><td class="num">${num(r.measured_subjects)}</td>
+    <td class="num">${num(r.truth_objects)}</td><td class="num">${num(r.measured_objects)}</td></tr>`).join("")}</tbody>` : "";
+}
+
+function renderQueries() {
+  const limit = data.drill_limit || 400;
+  const rows = selected ? (data.queries || {})[selected] || [] : null;
+  if (!rows) { $("queries-note").textContent = "Select a run above."; $("queries").innerHTML = ""; return; }
+  if (notKept()) { $("queries-note").textContent = notKept(); $("queries").innerHTML = ""; return; }
+  const failed = rows.filter((r) => r.outcome !== "ok").length;
+  const n = rows.length;
+  $("queries-note").textContent = `${selected}: ${n} unit queries, ${failed} not ok${n >= limit ? ` (first ${limit})` : ""}. Detection and enumeration queries are in the run's provenance in the bench store.`;
+  const outcomeClass = {ok: "good", "row-cap": "warn", "row-length": "warn", partial: "warn", throttled: "warn", transient: "warn", timeout: "bad", oom: "bad", "http-error": "bad", rejected: "bad"};  // voidx outcome values
+  const outcomeText = (o) => o ?? "?";
+  if (n) {
+    $("queries").innerHTML = `<thead><tr><th>outcome</th><th>kind</th><th>strategy</th><th class="num">rung</th><th class="num">ms</th><th>properties</th></tr></thead>
+      <tbody>${rows.map((r) => {
+        const propIris = r.p ? r.p.split(" ") : [];
+        const propNames = propIris.map(iri => local(iri)).join(", ");
+        return `<tr><td><span class="pill ${outcomeClass[r.outcome] || "bad"}">${esc(outcomeText(r.outcome))}</span></td>
+          <td>${esc(r.kind)}</td><td>${esc(r.strategy)}</td><td class="num">${r.rung == null ? "–" : Number(r.rung)}</td><td class="num">${num(r.elapsed_ms)}</td>
+          <td><code title="${esc(r.p)}">${esc(propNames)}</code></td></tr>`;
+      }).join("")}</tbody>`;
+  } else {
+    $("queries").innerHTML = "";
+  }
+}
+
+function render() {
+  const summary = filtered(data.summary), runs = filtered(data.runs);
+  if (selected && !runs.some((r) => `${r.engine}/${r.run_id}` === selected)) selected = null;
+  renderSourceMeta(); renderVerdicts(summary); renderScatter(summary); renderCoverage(summary); renderErrors(summary); renderRuns(runs); renderDrill(); renderQueries();
+}
+
+fetch("data.json").then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); }).then((d) => {
+  data = d;
+  const uniq = (k) => [...new Set(d.runs.map((r) => r[k]))].sort();
+  $("meta").textContent = `${d.profile} profile · ${d.date} · seed ${d.seed} · ${d.runs.length} runs`;
+  $("partial").hidden = !d.partial;
+  const conflicts = d.publishable === false ? (d.licence_conflicts || []) : [];
+  $("publishable").hidden = !conflicts.length;
+  $("publishable").textContent = conflicts.map((c) => `Not for publication: ${c} has conflicting licences.`).join(" ");
+  const withRuns = new Set(uniq("corpus"));  // a source whose every engine diverged or failed has no runs to pick
+  d.sources = d.sources || uniq("corpus").map((id) => ({id, tier: "synthetic"}));  // results from before 3b
+  corpusOptions(d.sources.filter((s) => withRuns.has(s.id))); narrow();
+  renderFindings(); renderLive(); renderCrossTier(); renderEstimators();
+  $("f-corpus").addEventListener("change", narrow);  // registered first, so it runs before the render below
+  for (const id of ["f-corpus", "f-engine", "f-faults"]) $(id).addEventListener("change", () => { selected = null; render(); });
+  render();
+}).catch(() => { $("meta").textContent = "The results file (data.json) could not be loaded. Run voidx-bench report to write it next to this page."; });
+</script>
