@@ -404,6 +404,11 @@ function renderLive() {
     <th class="num">row caps</th><th class="num" title="refused for the server's row length (Virtuoso SR319): answered further down the ladder">row length</th><th class="num" title="the endpoint's own 429s; the bench's local refusals are not counted">throttled</th><th class="num">not measured</th><th class="num" title="requests sent: the adaptive run's less its rerun's">rerun saved</th><th>budget</th><th>stopped</th>
     <th class="num" title="predicates the inventory listed">predicates</th><th class="num" title="their counts known at the end of the run">counted</th><th class="num" title="with a measured summary">measured</th><th class="num" title="counted or named">classes</th><th title="how the predicates were found: counted, uncounted, uncounted-partial or per-graph">inventory</th><th title="what the run carried from the last one, and why a full refresh">carry</th>
     <th class="num" title="predicates measured by the endpoint's latest run before this invocation">measured before</th>
+    <th title="the declared-schema listing: sent, carried (fresh), skipped (it hit the time limit lately), stopped (by the budget or the breaker) or none">schema listing</th>
+    <th class="num" title="the declared-schema listing's requests: the listing and its pages">listing requests</th>
+    <th class="num" title="subclass batches sent">schema batches</th>
+    <th class="num" title="server seconds and requests held back from the other queries for the subclass questions">reserve</th>
+    <th class="num" title="queries the reserve alone stopped: retried next run">held</th>
     <th title="the start of the answer that ended the run or its inventory">failure</th></tr></thead>
     <tbody>${rows.map((r) => `<tr><td><span title="${esc(r.endpoint)}">${esc(r.corpus)}</span></td>
     <td>${r.voidx_engine ? esc(r.voidx_engine + (r.voidx_default_graph ? " \u00b7 " + r.voidx_default_graph : "")) : "–"}</td><td>${modeCell(r.mode)}</td>
@@ -414,6 +419,9 @@ function renderLive() {
     <td class="num">${num(r.predicates_listed)}</td><td class="num">${num(r.predicates_counted)}</td><td class="num">${num(r.predicates_measured)}</td><td class="num">${num(r.classes_listed)}</td>
     <td>${inventoryCell(r)}</td><td>${carryCell(r)}</td>
     <td class="num">${num(r.previous_measured)}</td>
+    <td>${r.schema_listing ? esc(r.schema_listing) : "–"}</td><td class="num">${num(r.schema_listing_requests)}</td><td class="num">${num(r.schema_batches)}</td>
+    <td class="num">${Number(r.schema_reserve_requests) ? `${num(r.schema_reserve_s)} s · ${num(r.schema_reserve_requests)}` : num(r.schema_reserve_requests)}</td>
+    <td class="num">${Number(r.held_units) ? `<span class="pill warn">${num(r.held_units)}</span>` : num(r.held_units)}</td>
     <td>${r.failure_body ? `<code class="failure">${esc(r.failure_body)}</code>` : "–"}</td></tr>`).join("")}</tbody>`;
 }
 
