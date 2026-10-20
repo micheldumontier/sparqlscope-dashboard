@@ -1,10 +1,10 @@
-<title>voidx Strategy Bench</title>
+<title>sparqlscope Strategy Bench</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500&display=swap">
 <style>
 /* Layout: an instrument panel. Engines and dumps first (the whole run), then filters and verdicts, the two charts
    side by side, runs and drill-down below; then the views across the whole run: cost against accuracy per mode and
    tier, and the live endpoints. Baselines (void-generator, rdfsolve) are modes with their own colour and a diamond
-   marker; tiers have their own two colours, used only in the cross-tier view, for voidx's points and as a baseline
+   marker; tiers have their own two colours, used only in the cross-tier view, for sparqlscope's points and as a baseline
    point's outline. Cost is HTTP requests on every chart. */
 :root {
   --bg: #f4f6f9; --panel: #ffffff; --ink: #18202c; --muted: #5d6878; --rule: #dde2ea; --accent: #3350b8;
@@ -72,13 +72,13 @@ code.failure { display: inline-block; min-width: 24ch; max-width: 48ch; white-sp
 
 <div class="wrap">
   <header>
-    <h1>voidx Strategy Bench</h1>
+    <h1>sparqlscope Strategy Bench</h1>
     <p class="meta" id="meta">Loading results…</p>
     <p class="banner bad" id="publishable" role="alert" hidden></p>
     <p class="banner warn" id="partial" role="status" hidden>Partial run: the run stopped early; these results cover only the cells that finished before it stopped.</p>
     <p class="lede">How accurate and how costly each extraction strategy is, measured against exact ground truth on seeded
       synthetic corpora and on real dumps. Recall and precision are over (subject class, property, object class or datatype) patterns. Estimates
-      should have their 95 % bounds (±2·RSE before voidx 4b) hold the truth about 95 % of the time. An exact count that
+      should have their 95 % bounds (±2·RSE before sparqlscope 4b) hold the truth about 95 % of the time. An exact count that
       differs from truth at all is a defect.</p>
   </header>
 
@@ -86,10 +86,10 @@ code.failure { display: inline-block; min-width: 24ch; max-width: 48ch; white-sp
     <h2 id="h-findings">Engines and dumps</h2>
     <p class="note">How each engine took each source in this run. A diverged engine stored the source differently from its
       canonical form (expected → stored counts); a failed one did not load it. Either way its cells were skipped.
-      "Detected as" is what voidx took the engine for. "Union view" is the truth an engine is scored against: bag (a
+      "Detected as" is what sparqlscope took the engine for. "Union view" is the truth an engine is scored against: bag (a
       triple in two graphs counts twice) or set (the RDF merge), as the engine declares it merges graphs, by its union default graph or FROM.
       "Stores differently" is the datatype rewrites an engine was measured to make on what it stores: its datatype patterns cannot match
-      truth, so its exact-count defects there are the engine's storage, not voidx's. They still count: exact means exact.</p>
+      truth, so its exact-count defects there are the engine's storage, not sparqlscope's. They still count: exact means exact.</p>
     <div class="scroll"><table id="findings"></table></div>
   </section>
 
@@ -128,7 +128,7 @@ code.failure { display: inline-block; min-width: 24ch; max-width: 48ch; white-sp
   <section class="panel" id="estimators-panel" aria-labelledby="h-estimators" hidden>
     <h2 id="h-estimators">Estimators over every sample slice</h2>
     <p class="note">Each corpus harvested 16 times at 1/16 and 16 times at 1/256, pinned to sampling, every estimate
-      scored against its non-blank truth. 4b is what voidx reports (the conditional MLE for a pattern, exact 95 %
+      scored against its non-blank truth. 4b is what sparqlscope reports (the conditional MLE for a pattern, exact 95 %
       bounds, clamped by the counts the run knows); 4b-uncapped is the same point and bounds before the caps, so the
       estimator's own bias shows apart from the caps' (where a cap equals the truth, capping biases the point low);
       pre-4b is h / π with ±2·RSE from the same hits. Bias and RMSE are
@@ -140,7 +140,7 @@ code.failure { display: inline-block; min-width: 24ch; max-width: 48ch; white-sp
 
   <section class="panel" aria-labelledby="h-runs">
     <h2 id="h-runs">Runs</h2>
-    <p class="note">Every repetition, with robustness counts from the outcomes voidx recorded. Select a run to see its patterns.</p>
+    <p class="note">Every repetition, with robustness counts from the outcomes sparqlscope recorded. Select a run to see its patterns.</p>
     <div class="scroll"><table id="runs"></table></div>
   </section>
 
@@ -158,8 +158,8 @@ code.failure { display: inline-block; min-width: 24ch; max-width: 48ch; white-sp
 
   <section class="panel" aria-labelledby="h-tiers">
     <h2 id="h-tiers">Cost against accuracy, across tiers</h2>
-    <p class="note">One chart per mode, the baselines beside voidx's: each point is a (source, engine, faults) group's
-      median HTTP requests (log scale) against its recall. voidx's points are coloured by tier; a baseline's take its
+    <p class="note">One chart per mode, the baselines beside sparqlscope's: each point is a (source, engine, faults) group's
+      median HTTP requests (log scale) against its recall. sparqlscope's points are coloured by tier; a baseline's take its
       mode's colour, with the tier as its outline. Every chart shares the same axes. Live endpoints have no truth, so
       they sit on a cost-only strip below, coloured by mode.</p>
     <div class="legend" id="tier-legend"></div>
@@ -283,7 +283,7 @@ function renderVerdicts(summary) {
   $("proxy-note").textContent = proxied ? (data.proxy_note || "") : "";
   const proxyMark = (s) => s.cost_basis === "proxy-measured" ? ` <span class="pill none" title="counted by the bench proxy">proxy-measured</span>` : "";
   $("verdicts").innerHTML = `<thead><tr><th>strategy</th><th class="num">recall</th><th class="num">precision</th>
-    <th class="num">predicates</th><th class="num" title="voidx: its query attempts, retries folded in; a baseline: the HTTP requests the bench proxy counted">queries</th><th class="num">server s</th><th class="num">rel. error <small>median / p95</small></th>
+    <th class="num">predicates</th><th class="num" title="sparqlscope: its query attempts, retries folded in; a baseline: the HTTP requests the bench proxy counted">queries</th><th class="num">server s</th><th class="num">rel. error <small>median / p95</small></th>
     <th>intervals</th><th>exact counts</th><th>harvest</th></tr></thead><tbody>${rows.map((s) => `<tr>
     <td>${modeCell(s.mode)}</td><td class="num">${pct(s.pattern_recall)}</td><td class="num">${pct(s.pattern_precision)}</td>
     <td class="num">${pct(s.predicate_coverage)}</td><td class="num">${num(s.queries)}${s.mode === "adaptive-rerun" && s.queries_saved != null ? ` (${Number(s.queries_saved) >= 0 ? "−" : "+"}${num(Math.abs(s.queries_saved))})` : ""}${proxyMark(s)}</td><td class="num">${num(s.server_s, 2)}</td>
@@ -315,7 +315,7 @@ function renderScatter(summary) {
 }
 
 function marker(cx, cy, r, mode, fill, title, outline = "var(--panel)") {
-  // a baseline is a diamond, a voidx mode a circle: identity is never colour alone
+  // a baseline is a diamond, a sparqlscope mode a circle: identity is never colour alone
   const shape = BASELINES.has(mode)
     ? `<rect x="${cx - r * 0.85}" y="${cy - r * 0.85}" width="${r * 1.7}" height="${r * 1.7}" transform="rotate(45 ${cx} ${cy})"`
     : `<circle cx="${cx}" cy="${cy}" r="${r}"`;
@@ -351,7 +351,7 @@ function renderCrossTier() {
     let svg = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${esc(mode)}: HTTP requests against recall per tier">${axes()}`;
     for (const p of pts.filter((q) => q.mode === mode)) {
       const tier = TIER_COLORS[p.tier] || "var(--muted)";
-      // a baseline's points take its mode's colour, with its tier as the outline; voidx's are coloured by tier
+      // a baseline's points take its mode's colour, with its tier as the outline; sparqlscope's are coloured by tier
       svg += marker(x(p.requests), y(p.pattern_recall), 4.5, mode, BASELINES.has(mode) ? color(mode) : tier,
         `${esc(p.tier)} · ${esc(p.corpus)} · ${esc(p.engine)} · ${esc(p.faults)}: ${num(p.requests)} HTTP requests, recall ${pct(p.pattern_recall)}, precision ${pct(p.pattern_precision)}`,
         BASELINES.has(mode) ? tier : undefined);
@@ -399,7 +399,7 @@ function renderLive() {
   const outcomes = (r) => [["ok", r.n_ok, "good"], ["timeouts", r.n_timeout, "bad"], ["row caps", r.n_row_cap, "warn"], ["row length", r.n_row_length, "warn"], ["throttled", r.n_throttled, "warn"]]
     .map(([label, n, cls]) => `<td class="num">${Number(n) && cls !== "good" ? `<span class="pill ${cls}">${num(n)}</span>` : num(n)}</td>`).join("");
   // throttled is the endpoint's own 429s: the report has already taken the bench's local refusals out of r.n_throttled
-  $("live").innerHTML = `<thead><tr><th>endpoint</th><th>detected as</th><th>mode</th><th class="num" title="voidx's query attempts, those answered locally included">attempts</th><th class="num" title="HTTP requests that reached the endpoint: the cost">requests sent</th>
+  $("live").innerHTML = `<thead><tr><th>endpoint</th><th>detected as</th><th>mode</th><th class="num" title="sparqlscope's query attempts, those answered locally included">attempts</th><th class="num" title="HTTP requests that reached the endpoint: the cost">requests sent</th>
     <th class="num">server s</th><th class="num">wall s</th><th class="num" title="rate-limit waiting, real time">waited s</th><th class="num">ok</th><th class="num">timeouts</th>
     <th class="num">row caps</th><th class="num" title="refused for the server's row length (Virtuoso SR319): answered further down the ladder">row length</th><th class="num" title="the endpoint's own 429s; the bench's local refusals are not counted">throttled</th><th class="num">not measured</th><th class="num" title="requests sent: the adaptive run's less its rerun's">rerun saved</th><th>budget</th><th>stopped</th>
     <th class="num" title="predicates the inventory listed">predicates</th><th class="num" title="their counts known at the end of the run">counted</th><th class="num" title="with a measured summary">measured</th><th class="num" title="counted or named">classes</th><th title="how the predicates were found: counted, uncounted, uncounted-partial or per-graph">inventory</th><th title="what the run carried from the last one, and why a full refresh">carry</th>
@@ -408,10 +408,11 @@ function renderLive() {
     <th class="num" title="the declared-schema listing's requests: the listing and its pages">listing requests</th>
     <th class="num" title="subclass batches sent">schema batches</th>
     <th class="num" title="server seconds and requests held back from the other queries for the subclass questions">reserve</th>
-    <th class="num" title="queries the reserve alone stopped: retried next run">held</th>
+    <th class="num" title="units refused while the reserve was held, a deferred tail whole: retried next run">held</th>
+    <th class="num" title="the budget the reserve left the subclass questions once it had stopped something: seconds and requests the run still had, within the reserve (when the request hold stopped the queries, the seconds are the whole reserve though time refused nothing)">held budget</th>
     <th title="the start of the answer that ended the run or its inventory">failure</th></tr></thead>
     <tbody>${rows.map((r) => `<tr><td><span title="${esc(r.endpoint)}">${esc(r.corpus)}</span></td>
-    <td>${r.voidx_engine ? esc(r.voidx_engine + (r.voidx_default_graph ? " \u00b7 " + r.voidx_default_graph : "")) : "–"}</td><td>${modeCell(r.mode)}</td>
+    <td>${r.engine_detected ? esc(r.engine_detected + (r.engine_default_graph ? " \u00b7 " + r.engine_default_graph : "")) : "–"}</td><td>${modeCell(r.mode)}</td>
     <td class="num">${num(r.queries)}</td><td class="num">${num(r.requests)}</td><td class="num">${num(r.server_s, 2)}</td><td class="num">${num(r.wall_s, 2)}</td>
     <td class="num">${num(r.waited_s, 2)}</td>${outcomes(r)}<td class="num">${num(r.not_measured)}</td><td class="num">${num(r.requests_saved)}</td>
     <td>${Number(r.budget_refused) ? `<span class="pill warn">spent: ${num(r.budget_refused)} refused</span>` : `<span class="pill good">${num(r.requests)} of ${num(r.budget)} requests</span>`}</td>
@@ -422,6 +423,7 @@ function renderLive() {
     <td>${r.schema_listing ? esc(r.schema_listing) : "–"}</td><td class="num">${num(r.schema_listing_requests)}</td><td class="num">${num(r.schema_batches)}</td>
     <td class="num">${Number(r.schema_reserve_requests) ? `${num(r.schema_reserve_s)} s · ${num(r.schema_reserve_requests)}` : num(r.schema_reserve_requests)}</td>
     <td class="num">${Number(r.held_units) ? `<span class="pill warn">${num(r.held_units)}</span>` : num(r.held_units)}</td>
+    <td class="num">${Number(r.held_s) || Number(r.held_requests) ? `${num(r.held_s, 2)} s · ${num(r.held_requests)}` : num(r.held_requests)}</td>
     <td>${r.failure_body ? `<code class="failure">${esc(r.failure_body)}</code>` : "–"}</td></tr>`).join("")}</tbody>`;
 }
 
@@ -485,8 +487,8 @@ function renderRuns(runs) {
   const ordered = [...runs].sort((a, b) => MODES.indexOf(a.mode) - MODES.indexOf(b.mode) || a.rep - b.rep);
   const fails = (r) => ["timeout", "oom", "row_cap", "row_length", "partial", "throttled", "transient", "http_error", "rejected"]
     .map((k) => [k.replace("_", "-"), r[`n_${k}`] || 0]).filter(([, n]) => n).map(([k, n]) => `${k} ${n}`).join(", ") || "none";
-  $("runs").innerHTML = `<thead><tr><th>strategy</th><th class="num">rep</th><th class="num" title="voidx: its query attempts, retries folded in; a baseline: the HTTP requests the bench proxy counted">queries</th><th class="num" title="HTTP requests, retries included">requests</th><th class="num">server s</th>
-    <th class="num">wall s</th><th class="num">KB</th><th class="num" title="rate-limit waiting: on a simulated clock for voidx, real time for a baseline">waited s</th><th class="num">recall</th><th class="num">precision</th><th>failed queries</th><th>not measured</th></tr></thead>
+  $("runs").innerHTML = `<thead><tr><th>strategy</th><th class="num">rep</th><th class="num" title="sparqlscope: its query attempts, retries folded in; a baseline: the HTTP requests the bench proxy counted">queries</th><th class="num" title="HTTP requests, retries included">requests</th><th class="num">server s</th>
+    <th class="num">wall s</th><th class="num">KB</th><th class="num" title="rate-limit waiting: on a simulated clock for sparqlscope, real time for a baseline">waited s</th><th class="num">recall</th><th class="num">precision</th><th>failed queries</th><th>not measured</th></tr></thead>
     <tbody>${ordered.map((r) => { const key = `${r.engine}/${r.run_id}`; return `<tr class="pick${key === selected ? " selected" : ""}" tabindex="0" data-key="${esc(key)}"${key === selected ? ' aria-selected="true"' : ''}>
     <td>${modeCell(r.mode)}${attentionPills(r)}</td><td class="num">${Number(r.rep)}</td><td class="num">${num(r.queries)}</td><td class="num">${num(r.requests)}</td><td class="num">${num(r.server_s, 2)}</td>
     <td class="num">${num(r.wall_s, 2)}</td><td class="num">${num(r.bytes / 1024, 1)}</td><td class="num">${num(r.waited_s, 2)}</td><td class="num">${pct(r.pattern_recall)}</td><td class="num">${pct(r.pattern_precision)}</td>
@@ -532,7 +534,7 @@ function renderQueries() {
   const failed = rows.filter((r) => r.outcome !== "ok").length;
   const n = rows.length;
   $("queries-note").textContent = `${selected}: ${n} unit queries, ${failed} not ok${n >= limit ? ` (first ${limit})` : ""}. Detection and enumeration queries are in the run's provenance in the bench store.`;
-  const outcomeClass = {ok: "good", "row-cap": "warn", "row-length": "warn", partial: "warn", throttled: "warn", transient: "warn", timeout: "bad", oom: "bad", "http-error": "bad", rejected: "bad"};  // voidx outcome values
+  const outcomeClass = {ok: "good", "row-cap": "warn", "row-length": "warn", partial: "warn", throttled: "warn", transient: "warn", timeout: "bad", oom: "bad", "http-error": "bad", rejected: "bad"};  // sparqlscope outcome values
   const outcomeText = (o) => o ?? "?";
   if (n) {
     $("queries").innerHTML = `<thead><tr><th>outcome</th><th>kind</th><th>strategy</th><th class="num">rung</th><th class="num">ms</th><th>properties</th></tr></thead>
@@ -569,5 +571,5 @@ fetch("data.json").then((r) => { if (!r.ok) throw new Error(r.status); return r.
   $("f-corpus").addEventListener("change", narrow);  // registered first, so it runs before the render below
   for (const id of ["f-corpus", "f-engine", "f-faults"]) $(id).addEventListener("change", () => { selected = null; render(); });
   render();
-}).catch(() => { $("meta").textContent = "The results file (data.json) could not be loaded. Run voidx-bench report to write it next to this page."; });
+}).catch(() => { $("meta").textContent = "The results file (data.json) could not be loaded. Run sparqlscope-bench report to write it next to this page."; });
 </script>
