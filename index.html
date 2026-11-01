@@ -183,6 +183,11 @@ const local = (iri) => { const s = String(iri ?? ""); if (s.startsWith("urn:spar
 const pct = (v) => v == null ? "–" : `${Math.round(100 * v)} %`;
 const num = (v, d = 0) => v == null ? "–" : Number(v).toFixed(d);
 const color = (mode) => MODES.includes(mode) ? `var(--m-${mode})` : "var(--muted)";
+const nsPredicates = (r) => {  // the same text as the Markdown cell: 12 (9 exact · 2 sampled · 1 seen)
+  const split = [r.ns_predicates_exact, r.ns_predicates_sampled, r.ns_predicates_seen];
+  return !r.namespace_predicates || split.some((v) => v == null) ? count(r.namespace_predicates)
+    : `${count(r.namespace_predicates)} (${split[0]} exact \u00b7 ${split[1]} sampled \u00b7 ${split[2]} seen)`;
+};
 const count = (v) => v == null ? "–" : Number(v).toLocaleString("en");
 const family = (engine) => { const f = String(engine).split("-")[0]; return f === "pyoxigraph" ? "oxigraph" : f; };
 const shortImage = (v) => { const s = String(v), at = s.indexOf("@"); return at >= 0 ? s.slice(0, at + 20) : s.slice(0, 19); };  // name@sha256:<12 hex>
@@ -410,6 +415,9 @@ function renderLive() {
     <th class="num" title="server seconds and requests held back from the other queries for the subclass questions">reserve</th>
     <th class="num" title="units refused while the reserve was held, a deferred tail whole: retried next run">held</th>
     <th class="num" title="the budget the reserve left the subclass questions once it had stopped something: seconds and requests the run still had, within the reserve (when the request hold stopped the queries, the seconds are the whole reserve though time refused nothing)">held budget</th>
+    <th class="num" title="the predicates with an object-side namespace, and how well each is known: exact, sampled or seen in the first rows">ns predicates</th>
+    <th class="num" title="server seconds and requests held back from the other queries for the namespace questions">ns hold</th>
+    <th class="num" title="units the namespace share stopped: held back for it, or a namespace unit past it; retried next run">ns held</th>
     <th title="the start of the answer that ended the run or its inventory">failure</th></tr></thead>
     <tbody>${rows.map((r) => `<tr><td><span title="${esc(r.endpoint)}">${esc(r.corpus)}</span></td>
     <td>${r.engine_detected ? esc(r.engine_detected + (r.engine_default_graph ? " \u00b7 " + r.engine_default_graph : "")) : "–"}</td><td>${modeCell(r.mode)}</td>
@@ -424,6 +432,9 @@ function renderLive() {
     <td class="num">${Number(r.schema_reserve_requests) ? `${num(r.schema_reserve_s)} s · ${num(r.schema_reserve_requests)}` : num(r.schema_reserve_requests)}</td>
     <td class="num">${Number(r.held_units) ? `<span class="pill warn">${num(r.held_units)}</span>` : num(r.held_units)}</td>
     <td class="num">${Number(r.held_s) || Number(r.held_requests) ? `${num(r.held_s, 2)} s · ${num(r.held_requests)}` : num(r.held_requests)}</td>
+    <td class="num">${nsPredicates(r)}</td>
+    <td class="num">${Number(r.ns_reserve_s) || Number(r.ns_reserve_requests) ? `${num(r.ns_reserve_s, 2)} s · ${num(r.ns_reserve_requests)}` : num(r.ns_reserve_requests)}</td>
+    <td class="num">${Number(r.ns_held_units) ? `<span class="pill warn">${num(r.ns_held_units)}</span>` : num(r.ns_held_units)}</td>
     <td>${r.failure_body ? `<code class="failure">${esc(r.failure_body)}</code>` : "–"}</td></tr>`).join("")}</tbody>`;
 }
 
