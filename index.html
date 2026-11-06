@@ -171,6 +171,13 @@ code.failure { display: inline-block; min-width: 24ch; max-width: 48ch; white-sp
     <p class="note" id="live-note"></p>
     <div class="scroll"><table id="live"></table></div>
   </section>
+
+  <section class="panel" id="overlap-panel" aria-labelledby="h-overlap" hidden>
+    <h2 id="h-overlap">Overlap checks</h2>
+    <p class="note">After its rerun each live endpoint is sent a few more requests, within a slice of its budget, to test how many of one side's IRIs the other holds.</p>
+    <div class="scroll"><table id="overlap-endpoints"></table></div>
+    <div class="scroll"><table id="overlap-linksets"></table></div>
+  </section>
 </div>
 
 <script>
@@ -417,7 +424,8 @@ function renderLive() {
     <th class="num" title="the budget the reserve left the subclass questions once it had stopped something: seconds and requests the run still had, within the reserve (when the request hold stopped the queries, the seconds are the whole reserve though time refused nothing)">held budget</th>
     <th class="num" title="the predicates with an object-side namespace, and how well each is known: exact, sampled or seen in the first rows">ns predicates</th>
     <th class="num" title="server seconds and requests held back from the other queries for the namespace questions">ns hold</th>
-    <th class="num" title="units the namespace share stopped: held back for it, or a namespace unit past it; retried next run">ns held</th>
+    <th class="num" title="units held back for the namespace share: not run, retried next run">ns held</th>
+    <th class="num" title="namespace units past the namespace share: not run, retried next run">ns past share</th>
     <th title="the start of the answer that ended the run or its inventory">failure</th></tr></thead>
     <tbody>${rows.map((r) => `<tr><td><span title="${esc(r.endpoint)}">${esc(r.corpus)}</span></td>
     <td>${r.engine_detected ? esc(r.engine_detected + (r.engine_default_graph ? " \u00b7 " + r.engine_default_graph : "")) : "–"}</td><td>${modeCell(r.mode)}</td>
@@ -435,7 +443,25 @@ function renderLive() {
     <td class="num">${nsPredicates(r)}</td>
     <td class="num">${Number(r.ns_reserve_s) || Number(r.ns_reserve_requests) ? `${num(r.ns_reserve_s, 2)} s · ${num(r.ns_reserve_requests)}` : num(r.ns_reserve_requests)}</td>
     <td class="num">${Number(r.ns_held_units) ? `<span class="pill warn">${num(r.ns_held_units)}</span>` : num(r.ns_held_units)}</td>
+    <td class="num">${Number(r.ns_share_units) ? `<span class="pill warn">${num(r.ns_share_units)}</span>` : num(r.ns_share_units)}</td>
     <td>${r.failure_body ? `<code class="failure">${esc(r.failure_body)}</code>` : "–"}</td></tr>`).join("")}</tbody>`;
+}
+
+// results from before 4.2 have no overlap rows: the panel stays hidden
+function renderOverlap() {
+  const o = data.overlap_live;
+  $("overlap-panel").hidden = !o;
+  if (!o) return;
+  $("overlap-endpoints").innerHTML = `<thead><tr><th>endpoint</th><th class="num" title="requests the overlap checks sent it">requests</th><th class="num" title="its share of the budget kept for the checks">slice</th>
+    <th class="num">server s</th><th class="num">budget refused</th><th title="why it was sent nothing more, if it was">stopped</th><th class="num" title="linksets probed in this invocation">probed</th><th class="num" title="linksets carried from an earlier check">carried</th></tr></thead>
+    <tbody>${o.endpoints.map((e) => `<tr><td><span title="${esc(e.endpoint)}">${esc(e.corpus)}</span></td><td class="num">${num(e.requests)}</td><td class="num">${num(e.slice)}</td>
+    <td class="num">${num(e.server_s, 2)}</td><td class="num">${Number(e.budget_refused) ? `<span class="pill warn">${num(e.budget_refused)}</span>` : num(e.budget_refused)}</td>
+    <td>${e.stopped ? `<span class="pill ${e.stopped === "down" ? "bad" : "warn"}">${esc(e.stopped)}</span>` : `<span class="pill good">no</span>`}</td>
+    <td class="num">${num(e.linksets_probed)}</td><td class="num">${num(e.linksets_carried)}</td></tr>`).join("")}</tbody>`;
+  const interval = (r) => r.lower == null || r.upper == null ? "–" : `${Number(r.lower).toFixed(2)}\u2013${Number(r.upper).toFixed(2)}`;
+  $("overlap-linksets").innerHTML = `<thead><tr><th>a</th><th>b</th><th>predicate</th><th>namespace</th><th>match</th><th>sampling</th><th>evidence</th><th class="num" title="Clopper-Pearson interval for the share of a's IRIs b holds">interval</th><th class="num" title="estimated count of a's IRIs b holds">linked</th></tr></thead>
+    <tbody>${o.linksets.map((r) => `<tr><td>${esc(r.a)}</td><td>${esc(r.b)}</td><td>${esc(r.p)}</td><td>${esc(r.ns)}</td><td>${esc(r.match)}</td><td>${esc(r.sampling || "–")}</td>
+    <td>${esc(r.evidence)}${r.carried ? " (carried)" : ""}</td><td class="num">${interval(r)}</td><td class="num">${num(r.linked)}</td></tr>`).join("")}</tbody>`;
 }
 
 // results from before 4b have no estimators rows: the panel stays hidden
@@ -578,7 +604,7 @@ fetch("data.json").then((r) => { if (!r.ok) throw new Error(r.status); return r.
   const withRuns = new Set(uniq("corpus"));  // a source whose every engine diverged or failed has no runs to pick
   d.sources = d.sources || uniq("corpus").map((id) => ({id, tier: "synthetic"}));  // results from before 3b
   corpusOptions(d.sources.filter((s) => withRuns.has(s.id))); narrow();
-  renderFindings(); renderLive(); renderCrossTier(); renderEstimators();
+  renderFindings(); renderLive(); renderOverlap(); renderCrossTier(); renderEstimators();
   $("f-corpus").addEventListener("change", narrow);  // registered first, so it runs before the render below
   for (const id of ["f-corpus", "f-engine", "f-faults"]) $(id).addEventListener("change", () => { selected = null; render(); });
   render();
