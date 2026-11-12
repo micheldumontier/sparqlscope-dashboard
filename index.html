@@ -174,9 +174,10 @@ code.failure { display: inline-block; min-width: 24ch; max-width: 48ch; white-sp
 
   <section class="panel" id="overlap-panel" aria-labelledby="h-overlap" hidden>
     <h2 id="h-overlap">Overlap checks</h2>
-    <p class="note">After its rerun each live endpoint is sent a few more requests, within a slice of its budget, to test how many of one side's IRIs the other holds.</p>
+    <p class="note">After its rerun each live endpoint is sent a few more requests, within a slice of its budget, to test how many of one side's IRIs the other holds. A held share of the slice goes first to the SERVICE probes, then to the evidence step for linksets that kept IRIs.</p>
     <div class="scroll"><table id="overlap-endpoints"></table></div>
     <div class="scroll"><table id="overlap-linksets"></table></div>
+    <div class="scroll"><table id="overlap-services"></table></div>
   </section>
 </div>
 
@@ -452,16 +453,21 @@ function renderOverlap() {
   const o = data.overlap_live;
   $("overlap-panel").hidden = !o;
   if (!o) return;
-  $("overlap-endpoints").innerHTML = `<thead><tr><th>endpoint</th><th class="num" title="requests the overlap checks sent it">requests</th><th class="num" title="its share of the budget kept for the checks">slice</th>
-    <th class="num">server s</th><th class="num">budget refused</th><th title="why it was sent nothing more, if it was">stopped</th><th class="num" title="linksets probed in this invocation">probed</th><th class="num" title="linksets carried from an earlier check">carried</th></tr></thead>
-    <tbody>${o.endpoints.map((e) => `<tr><td><span title="${esc(e.endpoint)}">${esc(e.corpus)}</span></td><td class="num">${num(e.requests)}</td><td class="num">${num(e.slice)}</td>
-    <td class="num">${num(e.server_s, 2)}</td><td class="num">${Number(e.budget_refused) ? `<span class="pill warn">${num(e.budget_refused)}</span>` : num(e.budget_refused)}</td>
+  $("overlap-endpoints").innerHTML = `<thead><tr><th>endpoint</th><th class="num" title="requests the overlap checks sent it">requests</th><th class="num" title="requests booked on it by SERVICE probes that named it">booked</th><th class="num" title="its share of the budget kept for the checks">slice</th>
+    <th class="num" title="requests of the held share (probes and evidence) spent on it">held</th><th class="num">server s</th><th class="num" title="server seconds the held share spent">held s</th><th class="num">budget refused</th><th title="why it was sent nothing more, if it was">stopped</th><th class="num" title="linksets probed in this invocation">probed</th><th class="num" title="linksets carried from an earlier check">carried</th><th class="num" title="linksets whose evidence this invocation fetched">evidence</th><th class="num" title="SERVICE probes this endpoint was home to in this invocation">service</th></tr></thead>
+    <tbody>${o.endpoints.map((e) => `<tr><td><span title="${esc(e.endpoint)}">${esc(e.corpus)}</span></td><td class="num">${num(e.requests)}</td><td class="num">${num(e.booked)}</td><td class="num">${num(e.slice)}</td>
+    <td class="num">${num(e.held_requests)}</td><td class="num">${num(e.server_s, 2)}</td><td class="num">${num(e.held_s, 2)}</td><td class="num">${Number(e.budget_refused) ? `<span class="pill warn">${num(e.budget_refused)}</span>` : num(e.budget_refused)}</td>
     <td>${e.stopped ? `<span class="pill ${e.stopped === "down" ? "bad" : "warn"}">${esc(e.stopped)}</span>` : `<span class="pill good">no</span>`}</td>
-    <td class="num">${num(e.linksets_probed)}</td><td class="num">${num(e.linksets_carried)}</td></tr>`).join("")}</tbody>`;
+    <td class="num">${num(e.linksets_probed)}</td><td class="num">${num(e.linksets_carried)}</td><td class="num">${num(e.evidence_fetched)}</td><td class="num">${num(e.services_probed)}</td></tr>`).join("")}</tbody>`;
   const interval = (r) => r.lower == null || r.upper == null ? "–" : `${Number(r.lower).toFixed(2)}\u2013${Number(r.upper).toFixed(2)}`;
-  $("overlap-linksets").innerHTML = `<thead><tr><th>a</th><th>b</th><th>predicate</th><th>namespace</th><th>match</th><th>sampling</th><th>evidence</th><th class="num" title="Clopper-Pearson interval for the share of a's IRIs b holds">interval</th><th class="num" title="estimated count of a's IRIs b holds">linked</th></tr></thead>
+  $("overlap-linksets").innerHTML = `<thead><tr><th>a</th><th>b</th><th>predicate</th><th>namespace</th><th>match</th><th>sampling</th><th>evidence</th><th class="num" title="Clopper-Pearson interval for the share of a's IRIs b holds">interval</th><th class="num" title="estimated count of a's IRIs b holds">linked</th><th class="num" title="examples the evidence step found for the IRIs it kept">examples</th></tr></thead>
     <tbody>${o.linksets.map((r) => `<tr><td>${esc(r.a)}</td><td>${esc(r.b)}</td><td>${esc(r.p)}</td><td>${esc(r.ns)}</td><td>${esc(r.match)}</td><td>${esc(r.sampling || "–")}</td>
-    <td>${esc(r.evidence)}${r.carried ? " (carried)" : ""}</td><td class="num">${interval(r)}</td><td class="num">${num(r.linked)}</td></tr>`).join("")}</tbody>`;
+    <td>${esc(r.evidence)}${r.carried ? " (carried)" : ""}</td><td class="num">${interval(r)}</td><td class="num">${num(r.linked)}</td><td class="num">${num(r.examples)}</td></tr>`).join("")}</tbody>`;
+  const services = o.services || [];
+  $("overlap-services").hidden = !services.length;
+  const pill = {supported: "good", refused: "bad", unknown: "warn"};
+  $("overlap-services").innerHTML = !services.length ? "" : `<thead><tr><th>home</th><th>target</th><th title="whether home runs a SERVICE clause calling target">SERVICE</th></tr></thead>
+    <tbody>${services.map((s) => `<tr><td>${esc(s.home)}</td><td>${esc(s.target)}</td><td><span class="pill ${pill[s.support] || "warn"}">${esc(s.support)}</span>${s.carried ? " (carried)" : ""}</td></tr>`).join("")}</tbody>`;
 }
 
 // results from before 4b have no estimators rows: the panel stays hidden
